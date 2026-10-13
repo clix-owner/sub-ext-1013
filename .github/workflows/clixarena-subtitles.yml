@@ -1,0 +1,100 @@
+name: CLIXARENA audio to subtitles
+run-name: CLIXARENA subtitles · ${{ inputs.request_id || 'manual' }}
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: UI request identifier; leave blank for a manual run
+        required: false
+        type: string
+      media_url:
+        description: HTTPS media/Drive/Dropbox URL (visible as run input); blank uses SUBTITLE_MEDIA_URL secret
+        required: false
+        type: string
+      output_name:
+        description: Subtitle filename (with or without .srt)
+        required: true
+        default: subtitles.srt
+        type: string
+      audio_track:
+        description: auto, language (tam, hin, eng, mal...), or audio track number (0, 1...)
+        required: true
+        default: auto
+        type: string
+      language:
+        description: Spoken language hint; auto detects the original language (no translation)
+        required: true
+        default: auto
+        type: choice
+        options: [auto, ta, hi, ml, te, kn, en, si, ja, ko, zh, fr, de, es, it, ru, ar, pt, tr, th, id, vi]
+      model:
+        description: small = faster, medium = balanced accuracy, large-v3 = slower/more memory
+        required: true
+        default: medium
+        type: choice
+        options: [small, medium, large-v3]
+      sample_only:
+        description: Transcribe only 3 minutes to check accuracy before a full run
+        required: true
+        default: false
+        type: boolean
+      start_seconds:
+        description: Start at this second; SRT timestamps retain the original video offset
+        required: true
+        default: '0'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clixarena-subtitles-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  subtitles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONUNBUFFERED: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      HF_HUB_DISABLE_PROGRESS_BARS: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+      WHISPER_CACHE: /home/runner/.cache/clixarena-whisper
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-subtitles.txt
+      - name: Install audio tools
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
+      - name: Install speech recognition
+        run: python -m pip install --disable-pip-version-check -r requirements-subtitles.txt
+      - name: Restore downloaded speech model
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/clixarena-whisper
+          key: clixarena-whisper-${{ runner.os }}-1.2.1-${{ inputs.model }}
+      - name: Create subtitles from the selected audio
+        # Inputs are read from GITHUB_EVENT_PATH, not interpolated into shell commands.
+        run: python scripts/clixarena_subtitles.py
+        env:
+          SUBTITLE_MEDIA_URL: ${{ secrets.SUBTITLE_MEDIA_URL }}
+      - name: Download generated subtitles
+        uses: actions/upload-artifact@v4
+        with:
+          name: clixarena-subtitles-${{ github.run_id }}
+          path: generated-subtitles/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove temporary source and audio
+        if: always()
+        run: python -c "from pathlib import Path; import shutil; p=Path('.subtitle-work').resolve(); root=Path.cwd().resolve(); assert p.parent == root; shutil.rmtree(p, ignore_errors=True)"

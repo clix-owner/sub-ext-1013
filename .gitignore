@@ -1,0 +1,5 @@
+.subtitle-work/
+.whisper-cache/
+generated-subtitles/
+__pycache__/
+*.pyc
