@@ -1,83 +1,63 @@
-name: CLIXARENA audio to subtitles
-run-name: CLIXARENA subtitles · ${{ inputs.request_id || 'manual' }}
+name: CLIXARENA subtitles
+run-name: ${{ inputs.mode == 'select' && 'Subtitle selection' || 'CLIXARENA subtitles' }} · ${{ inputs.request_id || 'manual' }}
 on:
   workflow_dispatch:
     inputs:
-      request_id:
-        description: UI request identifier; leave blank for a manual run
-        required: false
-        type: string
+      mode:
+        type: choice
+        options: [extract, transcribe, select]
+        default: extract
+      subtitle_tracks:
+        description: 'ask (website), all, or subtitle track numbers (0,1)'
+        default: ask
       media_url:
-        description: HTTPS media/Drive/Dropbox URL (visible as run input); blank uses SUBTITLE_MEDIA_URL secret
+        description: HTTPS source URL (blank uses secret)
         required: false
-        type: string
       output_name:
-        description: Subtitle filename (with or without .srt)
-        required: true
-        default: subtitles.srt
-        type: string
+        default: subtitles
       audio_track:
-        description: auto, language (tam, hin, eng, mal...), or audio track number (0, 1...)
-        required: true
         default: auto
-        type: string
       language:
-        description: Spoken language hint; auto detects the original language (no translation)
-        required: true
         default: auto
-        type: choice
-        options: [auto, ta, hi, ml, te, kn, en, si, ja, ko, zh, fr, de, es, it, ru, ar, pt, tr, th, id, vi]
       model:
-        description: small = faster, medium = balanced accuracy, large-v3 = slower/more memory
-        required: true
-        default: large-v3
         type: choice
-        options: [small, medium, large-v3, turbo]
+        options: [large-v3, turbo, medium, small]
+        default: large-v3
       sample_only:
-        description: Transcribe only 3 minutes to check accuracy before a full run
-        required: true
-        default: false
         type: boolean
+        default: false
       start_seconds:
-        description: Start at this second; SRT timestamps retain the original video offset
-        required: true
         default: '0'
-        type: string
-
-      subtitle_url:
-        description: Optional direct HTTPS SRT/VTT download URL
+      request_id:
         required: false
-        type: string
-      subtitle_data:
-        description: Gzip-compressed base64 SRT/VTT supplied directly by the UI
-        required: false
-        type: string
-      processing_options:
-        description: 'JSON: mode (align/transcribe), alignment, alignment_model, alignment_window, subtitle_shift'
-        required: false
-        default: '{"mode":"transcribe","alignment":false,"recover":false}'
-        type: string
-
 permissions:
   contents: read
-
-concurrency:
-  group: clixarena-subtitles-${{ github.run_id }}
-  cancel-in-progress: false
-
+  actions: read
 jobs:
+  selection:
+    if: inputs.mode == 'select'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Save chosen subtitle tracks
+        run: python3 scripts/subtitle_selection.py select
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subtitle-selection-${{ inputs.request_id }}
+          path: selection.json
+          compression-level: 0
+          retention-days: 1
   subtitles:
+    if: inputs.mode != 'select'
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     env:
       PYTHONUNBUFFERED: '1'
       HF_HUB_DISABLE_TELEMETRY: '1'
-      HF_HUB_DISABLE_PROGRESS_BARS: '1'
-      TOKENIZERS_PARALLELISM: 'false'
       WHISPER_CACHE: /home/runner/.cache/clixarena-whisper
-      HF_HOME: /home/runner/.cache/clixarena-huggingface
-      TORCH_HOME: /home/runner/.cache/clixarena-torch
-      ALIGN_MODEL: ${{ vars.ALIGN_MODEL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,43 +65,53 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: requirements-subtitles.txt
-      - name: Install audio tools
+      - name: Install media tools
         run: |
           if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
             sudo apt-get update -qq
             sudo apt-get install -y -qq ffmpeg
           fi
-      - name: Install CPU speech and alignment runtime
-        run: |
-          python -m pip install --disable-pip-version-check torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install --disable-pip-version-check -r requirements-subtitles.txt
-          python -m pip install --disable-pip-version-check --no-deps whisperx==3.8.6
-          python -c "from faster_whisper import WhisperModel; from whisperx.alignment import load_align_model, align; from whisperx.audio import load_audio"
-      - name: Restore downloaded speech model
-        uses: actions/cache@v4
+      - name: Install speech runtime (new subtitles only)
+        if: inputs.mode == 'transcribe'
+        run: python -m pip install --disable-pip-version-check -r requirements-subtitles.txt
+      - uses: actions/cache@v4
+        if: inputs.mode == 'transcribe'
         with:
           path: /home/runner/.cache/clixarena-whisper
           key: clixarena-whisper-${{ runner.os }}-1.2.1-${{ inputs.model }}
-      - name: Prepare selected audio and uploaded subtitles
-        # Inputs are read from GITHUB_EVENT_PATH, not interpolated into shell commands.
-        run: python scripts/subtitle_pipeline.py prepare
+      - name: Read embedded subtitle tracks (one track extracts automatically)
+        id: tracks
+        if: inputs.mode == 'extract'
+        run: python scripts/subtitle_selection.py prepare
         env:
           SUBTITLE_MEDIA_URL: ${{ secrets.SUBTITLE_MEDIA_URL }}
-      - name: Create new subtitles (skipped for timestamp repair)
-        run: python scripts/subtitle_pipeline.py recognize
-      - name: Align source-language words to audio
-        run: python scripts/subtitle_pipeline.py align
-      - name: Export subtitles and review report
-        run: python scripts/subtitle_pipeline.py export
-      - name: Download generated subtitles
+      - name: Publish subtitle list for the website
+        if: steps.tracks.outputs.waiting == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: subtitle-tracks-${{ github.run_id }}
+          path: subtitle-tracks.json
+          compression-level: 0
+          retention-days: 1
+      - name: Waiting for you to tick subtitle tracks in the website
+        if: steps.tracks.outputs.waiting == 'true'
+        run: python scripts/subtitle_selection.py wait
+        env:
+          SUBTITLE_MEDIA_URL: ${{ secrets.SUBTITLE_MEDIA_URL }}
+          GH_TOKEN: ${{ github.token }}
+      - name: Create new subtitles from audio
+        if: inputs.mode == 'transcribe'
+        run: python scripts/subtitle_job.py
+        env:
+          SUBTITLE_MEDIA_URL: ${{ secrets.SUBTITLE_MEDIA_URL }}
+      - name: Download subtitles and extraction report
+        if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: clixarena-subtitles-${{ github.run_id }}
           path: generated-subtitles/
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 7
-      - name: Remove temporary source and audio
+      - name: Remove temporary media
         if: always()
-        run: python -c "from pathlib import Path; import shutil; p=Path('.subtitle-work').resolve(); root=Path.cwd().resolve(); assert p.parent == root; shutil.rmtree(p, ignore_errors=True)"
+        run: python -c "from pathlib import Path; import shutil; p=Path('.subtitle-work').resolve(); assert p.parent == Path.cwd().resolve(); shutil.rmtree(p, ignore_errors=True)"
