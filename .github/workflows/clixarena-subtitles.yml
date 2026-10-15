@@ -5,7 +5,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [extract, transcribe, select]
+        options: [extract, transcribe, match, select]
         default: extract
       subtitle_tracks:
         description: 'ask (website), all, or subtitle track numbers (0,1)'
@@ -21,7 +21,7 @@ on:
         default: auto
       model:
         type: choice
-        options: [large-v3, turbo, medium, small]
+        options: [base, small, medium, turbo, large-v3]
         default: large-v3
       sample_only:
         type: boolean
@@ -71,11 +71,11 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y -qq ffmpeg
           fi
-      - name: Install speech runtime (new subtitles only)
-        if: inputs.mode == 'transcribe'
+      - name: Install speech runtime (word matching or new subtitles)
+        if: inputs.mode == 'transcribe' || inputs.mode == 'match'
         run: python -m pip install --disable-pip-version-check -r requirements-subtitles.txt
       - uses: actions/cache@v4
-        if: inputs.mode == 'transcribe'
+        if: inputs.mode == 'transcribe' || inputs.mode == 'match'
         with:
           path: /home/runner/.cache/clixarena-whisper
           key: clixarena-whisper-${{ runner.os }}-1.2.1-${{ inputs.model }}
@@ -99,8 +99,8 @@ jobs:
         env:
           SUBTITLE_MEDIA_URL: ${{ secrets.SUBTITLE_MEDIA_URL }}
           GH_TOKEN: ${{ github.token }}
-      - name: Create new subtitles from audio
-        if: inputs.mode == 'transcribe'
+      - name: Match existing subtitle words or create new subtitles
+        if: inputs.mode == 'transcribe' || inputs.mode == 'match'
         run: python scripts/subtitle_job.py
         env:
           SUBTITLE_MEDIA_URL: ${{ secrets.SUBTITLE_MEDIA_URL }}

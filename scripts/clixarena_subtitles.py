@@ -38,7 +38,7 @@ def settings(inputs):
         raise SetupError('Choose another filename; this name is reserved on Windows.')
     model = str(inputs.get('model','medium'))
     language = str(inputs.get('language','auto')).strip().lower()
-    if model not in ('small','medium','large-v3','turbo') or language not in LANGUAGES:
+    if model not in ('base','small','medium','large-v3','turbo') or language not in LANGUAGES:
         raise SetupError('Choose a supported model and spoken-language hint.')
     sample = inputs.get('sample_only',False)
     if sample not in (True,False,'true','false'):

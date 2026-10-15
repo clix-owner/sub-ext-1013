@@ -11,6 +11,9 @@ def main():
     if mode=='extract':
         from clixarena_extract import main as extract
         extract(inputs)
+    elif mode=='match':
+        from subtitle_word_match import main as match
+        match(inputs)
     elif mode=='transcribe':
         from clixarena_subtitles import main as transcribe
         if transcribe(): raise SetupError("Speech transcription failed; see the preceding step message.")
