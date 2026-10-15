@@ -30,9 +30,9 @@ on:
       model:
         description: small = faster, medium = balanced accuracy, large-v3 = slower/more memory
         required: true
-        default: medium
+        default: large-v3
         type: choice
-        options: [small, medium, large-v3]
+        options: [small, medium, large-v3, turbo]
       sample_only:
         description: Transcribe only 3 minutes to check accuracy before a full run
         required: true
@@ -42,6 +42,20 @@ on:
         description: Start at this second; SRT timestamps retain the original video offset
         required: true
         default: '0'
+        type: string
+
+      subtitle_url:
+        description: Optional direct HTTPS SRT/VTT download URL
+        required: false
+        type: string
+      subtitle_data:
+        description: Gzip-compressed base64 SRT/VTT supplied directly by the UI
+        required: false
+        type: string
+      processing_options:
+        description: 'JSON: mode (align/transcribe), alignment, alignment_model, alignment_window, subtitle_shift'
+        required: false
+        default: '{"mode":"transcribe","alignment":false,"recover":false}'
         type: string
 
 permissions:
@@ -61,6 +75,9 @@ jobs:
       HF_HUB_DISABLE_PROGRESS_BARS: '1'
       TOKENIZERS_PARALLELISM: 'false'
       WHISPER_CACHE: /home/runner/.cache/clixarena-whisper
+      HF_HOME: /home/runner/.cache/clixarena-huggingface
+      TORCH_HOME: /home/runner/.cache/clixarena-torch
+      ALIGN_MODEL: ${{ vars.ALIGN_MODEL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,18 +93,28 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y -qq ffmpeg
           fi
-      - name: Install speech recognition
-        run: python -m pip install --disable-pip-version-check -r requirements-subtitles.txt
+      - name: Install CPU speech and alignment runtime
+        run: |
+          python -m pip install --disable-pip-version-check torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check -r requirements-subtitles.txt
+          python -m pip install --disable-pip-version-check --no-deps whisperx==3.8.6
+          python -c "from faster_whisper import WhisperModel; from whisperx.alignment import load_align_model, align; from whisperx.audio import load_audio"
       - name: Restore downloaded speech model
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/clixarena-whisper
           key: clixarena-whisper-${{ runner.os }}-1.2.1-${{ inputs.model }}
-      - name: Create subtitles from the selected audio
+      - name: Prepare selected audio and uploaded subtitles
         # Inputs are read from GITHUB_EVENT_PATH, not interpolated into shell commands.
-        run: python scripts/clixarena_subtitles.py
+        run: python scripts/subtitle_pipeline.py prepare
         env:
           SUBTITLE_MEDIA_URL: ${{ secrets.SUBTITLE_MEDIA_URL }}
+      - name: Create new subtitles (skipped for timestamp repair)
+        run: python scripts/subtitle_pipeline.py recognize
+      - name: Align source-language words to audio
+        run: python scripts/subtitle_pipeline.py align
+      - name: Export subtitles and review report
+        run: python scripts/subtitle_pipeline.py export
       - name: Download generated subtitles
         uses: actions/upload-artifact@v4
         with:
