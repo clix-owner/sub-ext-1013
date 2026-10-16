@@ -138,3 +138,16 @@ class SubtitleTests(unittest.TestCase):
             finally:os.chdir(previous)
 
 if __name__=='__main__':unittest.main()
+
+class AudioSelectionLogTests(unittest.TestCase):
+ def test_missing_language_logs_numbered_tracks_without_exposing_metadata(self):
+  import io
+  output=io.StringIO()
+  with patch('sys.stdout',output):
+   with self.assertRaises(sub.SetupError):sub.select_audio([{'channels':2,'tags':{'title':'https://private.example/media'}},{'channels':6,'tags':{'language':'jpn'}}],'eng')
+  log=output.getvalue();self.assertIn('Audio track 0: language=und, channels=2',log);self.assertIn('Audio track 1: language=jpn, channels=6',log);self.assertNotIn('private.example',log)
+ def test_untagged_audio_accepts_explicit_number_without_language_guess(self):
+  streams=[{'channels':2}]
+  self.assertEqual(sub.select_audio(streams,'0')[0],0)
+  self.assertEqual(sub.select_audio(streams,'auto')[0],0)
+  with self.assertRaises(sub.SetupError):sub.select_audio(streams,'eng')

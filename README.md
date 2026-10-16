@@ -1,35 +1,34 @@
-# Fix Timestamps submit — තහවුරු කළ හේතුව සහ නිවැරදි කිරීම
+# CLIXARENA: embedded track picker + existing-dialogue word matching
 
-2026-10-16 ඔබ පිරවූ live browser form එකෙන්ම ගැටලුව නැවත ඇති කළා. Method 3, Movie, English තෝරා subtitle file එක සමඟ submit කළ විට:
+## Install
+Update BOTH archives together. Copy the Actions archive into the existing GitHub repository including .github/workflows and scripts, and commit to its default branch. Replace the Cloudflare UI project with the UI archive and deploy its Worker/public assets together. Keep existing GITHUB_OWNER/GITHUB_REPO/GITHUB_REF/GITHUB_WORKFLOW settings and GITHUB_TOKEN (Actions read/write), UI_PASSWORD, SESSION_SECRET secrets. Keep TMDB_TOKEN if used. No R2 or additional storage service is required. This package has not been deployed to the live site from this chat.
 
-Compressed subtitle exceeds the request limit. Use a subtitle download link.
+## Three separate methods
+Method 1. Extract embedded subtitles: reads tracks, extracts immediately if there is one, or shows a checkbox list under Your requests if there are several. Only checked tracks are extracted. The source remains on the same runner while waiting, so there is no second media download. Selection expires after 30 minutes. The small selection workflow needs an available GitHub runner. Track-list/selection JSON artifacts expire after one day; private video is not uploaded as an artifact.
+Method 3. Fix timestamps - match spoken words: upload existing UTF-8 SRT/VTT in the same language as the selected audio (or provide its direct HTTPS download link). Select the audio track/language and speech model. Recognition is used internally to locate the uploaded words; ASR dialogue is never substituted into the output. Source cue identifiers, text, tags and line breaks are preserved. Only timestamps change. No translation, line insertion, merging or dialogue rewriting occurs.
+Method 2. Create new subtitles: retains the separate speech-transcription method.
 
-ඒ පණිවිඩය frontend subtitlePayload() එකේ gzip file size > 45000 bytes යන guard එකෙන් ආවා. /api/start කැඳවීමට පෙරම එය නතර වෙන නිසා GitHub run එකක් සෑදෙන්නේ නැහැ. Error message එක Your requests කොටසටත් පහළින් තිබුණා. මෙය නිරීක්ෂණයෙන් තහවුරු කළ root cause එකයි. කලින් run title පිළිබඳ අනුමානය මේ submit එකේ හේතුව නොවේ. HTTP 404 log එක වෙනත් extraction run එකකට අදාළයි.
+## Word matching
+The implementation uses faster-whisper word timestamps and monotonic normalized token matching. Formatting, speaker labels and stage directions are ignored only in matching input. Matching contractions are normalized internally. Clear phrase/boundary matches refine individual cues. When enough well-distributed speech matches agree, a robust time scale/offset corrects progressive timing drift for other cues. Such cues are labeled speech_anchor_transform, not word_matched. Short local corrections supported on both sides are labeled anchor_inferred. Insufficient evidence keeps original timing; new overlaps are rolled back. A global transform is not suitable for every edit/cut pattern, and this implementation does not guarantee per-line or song accuracy.
 
-## ස්ථාපනය — දෙකම අවශ්‍යයි
+The recognition pass for this method runs without voice-activity filtering to avoid dropping quiet dialogue; extraneous recognized text is excluded by matching to the uploaded subtitle. This can still produce recognition/matching errors, especially with music or overlapping speech. Languages other than English were not validated on real media in this release. Do not interpret match counts as accuracy percentages.
 
-1. මෙම ZIP එකේ github-actions/ තුළ ඇති ගොනු ඔබේ clix-owner/sub-ext-1013 repository එකේ root එකට යොදන්න. .github/workflows/clixarena-subtitles.yml සහ scripts/subtitle_upload.py ඇතුළු වෙනස් වූ scripts commit කර main branch එකට යොදන්න. අවශ්‍ය නම් web editor තුළ GitHub source changes review කර commit කරන්න. පවතින workflow/settings/secrets ඉවත් නොකරන්න.
-2. Cloudflare > Workers & Pages > sub-ext-api > Edit code තුළ මෙම ZIP එකේ sub-ext-api-worker-large-subtitles.mjs සම්පූර්ණ code එක යොදා Deploy කරන්න. මෙය frontend HTML/JS/CSS ඇතුළත් තනි Worker එකක්; පරණ static assets නැවත සේවය නොකරන නිසා app.js වෙනම upload කිරීම අවශ්‍ය නැහැ. පවතින environment variables/secrets තබාගන්න. SESSION_SECRET වෙනස් නොකරන්න. Source project එකෙන් deploy කිරීමට කැමති නම් sub-ext-api/ තුළ npm ci, npm run deploy භාවිත කරන්න; එයත් frontend සහ API දෙකම deploy කළ යුතුයි. ක්‍රම දෙකෙන් එකක් පමණක් භාවිත කරන්න.
-3. Site එක reload කර subtitle file එක නැවත තෝරා submit කරන්න. ඔබේ පරණ selected file එක reload එකෙන් ඉවත් වේ. අවශ්‍ය නම් නැවත sign in කරන්න.
+Base, Small, Medium, Large-v3 and Turbo are available. English word matching uses Base.en/Small.en/Medium.en for those respective sizes. Base.en was used for the supplied local test; larger models have not been tested against this file. Extraction does not install or download any speech model. Word matching and new-subtitle modes install the speech runtime and fetch the requested model as needed on the GitHub runner. Local recognition needs the runtime/model too.
 
-## වෙනස් වූ හැසිරීම
+Subtitle uploads are gzip-compressed and passed with the workflow request; 2 MB uncompressed / 45 KB compressed limits protect GitHub's input budget. A direct HTTPS subtitle URL is available for larger compressed files (still 2 MB downloaded). Video URLs and subtitle payloads are workflow inputs; use a private repository for private material. Internally, the existing subtitle_tracks input carries a JSON subtitle source in match mode to retain ten workflow inputs. Other modes continue using it for track indices; the user does not need to manage that encoding.
 
-කුඩා subtitle uploads සෘජුවම workflow inputs ලෙස යනවා. Base64 gzip payload එක අක්ෂර 56000ට වැඩි නම් Worker එක එය උපරිම අක්ෂර 48000 කොටස් කර upload-mode workflow runs වෙත යවනවා. එක් එක් dispatch එක GitHub payload budget එකට යටින් තිබෙනවා. ඉන්පසු මුල් match job එක නිර්මාණය කර එහි run ID එකෙන් status track කරනවා.
+## Output
+Word matching produces an SRT with original dialogue, a copy with original timing, a JSON timing manifest and an HTML comparison/player. The HTML can load a local video in the browser without uploading it; MKV codec support depends on the browser. Otherwise open the SRT with the source video in a normal video player. Samples omit cues outside the processed range and report the omission count; full runs preserve all input cues. The UI's optional sample is three minutes. The separately supplied Merlin output is a custom first-half test.
 
-Upload runs subtitle-input-UUID-index නම් GitHub artifacts සාදනවා. ඒවා දින 1කින් expire වෙනවා. Match job එක කොටස් සියල්ල ලැබෙන තෙක් උපරිම විනාඩි 15ක් බලා සිට, request UUID, chunk count සහ මුළු compressed file එකේ SHA-256 hash තහවුරු කර UTF-8 subtitles නැවත ගන්නවා. නැති/වැරදි කොටස් මත processing නොකරනවා. වෙනම R2, bucket හෝ upload service එකක් නැහැ. Uploaded subtitles GitHub workflow inputs සහ තාවකාලික artifacts තුළ තිබෙනවා. Media එක chunk upload කරන්නේ නැහැ.
+## Actual local Merlin test
+Source: user-provided VidVault (1).mkv (2810.811 seconds), English audio track 0, and the supplied 407-cue English SRT. No video/subtitle was uploaded or re-downloaded. Base.en model assets totaled 147,770,612 bytes on disk; installing the speech runtime required additional package downloads. Two first-half recognition passes were compared using the same cached model, with and without voice-activity filtering. The final pass processed 1405.4055 seconds (23m25.4055s) and used no voice-activity filtering. It took approximately 277 seconds of recognition on this machine.
 
-දැන් limits: subtitle plain file 2 MiB; gzip compressed 512 KiB; උපරිම input-part runs 15ක් සහ processing run එකක්. සාමාන්‍ය file එකකට runs කිහිපයක් පමණක් ඇති වේ; කුඩා files සඳහා අමතර runs නැහැ. GitHub runner queue තද නම් transfer එකට කාලය ගත විය හැකියි. Compressed 512 KiBටත් වැඩි නම් subtitle URL ක්‍රමය භාවිත කළ යුතුයි. Bad/expired media URL එකක් HTTP 404 වීම වෙනම source-host දෝෂයකි; මෙම වෙනස ඒ link එක යථා තත්ත්වයට පත් කරන්නේ නැහැ.
+206 complete cues belong within the requested half: 78 use direct word matches and 128 use the robust speech-anchor timing transform. All 206 dialogue payloads, tags and line breaks match their original source cues exactly. 201 cues from the remaining video range are outside this requested output. The inferred scale is approximately 1.049376 and offset -0.715 seconds, supported by 87 speech anchors with median fit residual about 0.249 seconds. These are consistency measurements, not human-verified accuracy figures, and are not hard-coded into the UI or implementation.
 
-Error/status පණිවිඩ submit button එකට ඉහළින් දැන් පෙනෙනවා. Signed request identifiers browser refresh එකෙන් අතුරුදහන් වීම නිවැරදි කළා. Skipped workflow jobs තිබුණත් processing job එකේ status පෙන්වනවා.
+Three separately seeked local clips with longer dialogue context were recognized again using the cached model: start-time differences versus the full-half pass were -0.02s, 0.00s and -0.06s. Earlier very short/context-poor clips could not confirm two short cues; those checks are also retained in the local validation report. No complete human listening review has been performed.
 
-## Verification
+## Validation
+44 Python and 33 UI/Worker tests passed (77 total). Includes original extraction/track-selection behavior, timing scale recovery, matching evidence/low-confidence guards, text identity, markup-safe review, subtitle upload compression/size limits, ten-input dispatch, invalid selection prevention and authentication/token isolation. Real local FFmpeg extraction fixtures and the supplied first-half video test were run. Worker bundled offline, workflow YAML parsed with ten inputs, and review JavaScript passed syntax checking. Cloudflare/GitHub live deployment and cross-run selection transport were not exercised here.
 
-- API/frontend: 43 tests passed, 0 failed.
-- Workflow/Python: 53 tests passed, 0 failed (UTF-8 mode, local FFmpeg).
-- 45 KBට වැඩි gzip subtitle fixture එක browser code එකෙන් API වෙත යෑම පරීක්ෂා කළා.
-- Large payload එක කොටස් කර byte budget එක තුළ dispatch කිරීම සහ නැවත එකතු කළ subtitle එක byte-for-byte ගැළපීම පරීක්ෂා කළා.
-- Failed staging, missing parts, wrong request UUID, wrong hash, invalid part count, timeout සහ artifact download token isolation පරීක්ෂා කළා.
-- Workflow YAML parsed: inputs 10, upload job isolation සහ GH_TOKEN read permissions wiring තහවුරු කළා.
-- Self-contained Worker syntax සහ updated HTML/JS/CSS සේවය කිරීම පරීක්ෂා කළා.
-
-Live අසාර්ථක submit එක මෙහි නැවත ඇති කළා. නිවැරදි කළ code තවම ඔබේ GitHub/Cloudflare වෙත deploy කර නැහැ; GitHub artifact transport සහ සම්පූර්ණ media processing එක live end-to-end පරීක්ෂා කර නැහැ. Recognition/timestamp algorithm එක වෙනස් කර නැහැ.
+## Method numbering and model order update
+The UI dropdown is ordered Method 1 (embedded extraction), Method 2 (new subtitles), Method 3 (existing-dialogue word matching). Method 3 initially selects Base, using Base.en for English as in the Merlin test. The model list runs Base → Small → Medium → Large-v3 Turbo → Large-v3. English Method 3 uses the .en versions of Base, Small and Medium. Model choices are remembered separately for Methods 2 and 3 while the page remains open. Large-v3 is the largest model supported by this package; a larger model is not a guarantee of perfect timing. Other sizes were not downloaded or tested on the supplied video during this update.

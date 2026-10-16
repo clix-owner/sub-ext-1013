@@ -76,6 +76,13 @@ def audio_streams(source):
     return streams
 
 def select_audio(streams, preference):
+    # Log safe track metadata before validation, including timestamp-repair failures.
+    for number,stream in enumerate(streams):
+        language=str((stream.get('tags') or {}).get('language','und')).strip().lower()
+        if not re.fullmatch(r'[a-z]{2,3}',language):language='und'
+        channels=stream.get('channels',0)
+        if not isinstance(channels,int):channels=0
+        print(f'Audio track {number}: language={language}, channels={channels}',flush=True)
     if preference.isdigit():
         index = int(preference)
         if index>=len(streams):
@@ -187,10 +194,6 @@ def main():
         stage='media download';print('Downloading video/audio',flush=True)
         download(options['url'],source,12*1024**3)
         stage='audio selection';streams=audio_streams(source)
-        for i,stream in enumerate(streams):
-            lang=str(stream.get('tags',{}).get('language','und'))
-            if not re.fullmatch(r'[a-zA-Z]{2,3}',lang):lang='und'
-            print(f'Audio track {i}: language={lang}, channels={int(stream.get("channels",0))}',flush=True)
         index,selected=select_audio(streams,options['audio'])
         print(f'Selected audio track {index}',flush=True)
         stage='audio extraction';duration=extract_audio(source,audio,index,options['start'],options['sample'])
