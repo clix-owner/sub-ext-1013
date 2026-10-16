@@ -107,4 +107,17 @@ class SampleTests(unittest.TestCase):
    data=re.search(r'const cues=(.*);const player',doc).group(1)
    self.assertEqual(json.loads(data)[0]['text'],original['text'])
    self.assertEqual(doc.count('</script>'),1)
+ def test_recognize_supports_auto_language(self):
+  from unittest.mock import patch, MagicMock
+  from types import SimpleNamespace as NS
+  mock_engine = MagicMock()
+  mock_info = MagicMock()
+  mock_info.language = 'en'
+  mock_info.duration = 10.0
+  mock_engine.transcribe.return_value = ([], mock_info)
+  with patch.dict(sys.modules, {'faster_whisper': NS(WhisperModel=MagicMock(return_value=mock_engine))}):
+   res, dur = m.recognize('dummy.wav', 'base', 'auto', Path('.'))
+   mock_engine.transcribe.assert_called_once()
+   _, kwargs = mock_engine.transcribe.call_args
+   self.assertIsNone(kwargs.get('language'))
 if __name__=='__main__':unittest.main()

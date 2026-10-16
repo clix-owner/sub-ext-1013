@@ -215,7 +215,8 @@ def recognize(audio,model,language,cache,allow_download=True):
     from faster_whisper import WhisperModel
     model=model+'.en' if language=='en' and model in ('base','small','medium') else model
     engine=WhisperModel(model,device='cpu',compute_type='int8',cpu_threads=min(8,os.cpu_count() or 2),num_workers=1,download_root=str(cache),local_files_only=not allow_download)
-    segments,info=engine.transcribe(str(audio),language=language,task='transcribe',beam_size=5,word_timestamps=True,vad_filter=False,vad_parameters={'min_silence_duration_ms':500,'speech_pad_ms':300},condition_on_previous_text=False,temperature=0)
+    segments,info=engine.transcribe(str(audio),language=None if language=='auto' else language,task='transcribe',beam_size=5,word_timestamps=True,vad_filter=False,vad_parameters={'min_silence_duration_ms':500,'speech_pad_ms':300},condition_on_previous_text=False,temperature=0)
+    if language=='auto':print(f'Detected speech language: {info.language}',flush=True)
     words=[];progress=0
     for segment in segments:
         if segment.no_speech_prob>.8 and segment.avg_logprob<-1:continue
@@ -248,7 +249,6 @@ def subtitle_text(payload,work):
 
 def main(inputs):
     cfg=settings(inputs)
-    if cfg['language']=='auto':raise SetupError('Select the language shared by the audio and uploaded subtitles.')
     work=Path('.subtitle-work');work.mkdir(exist_ok=True)
     try:
         cues=parse_subtitles(subtitle_text(inputs.get('subtitle_tracks',''),work))
