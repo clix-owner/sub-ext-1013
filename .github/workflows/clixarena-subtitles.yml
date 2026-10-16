@@ -1,11 +1,11 @@
 name: CLIXARENA subtitles
-run-name: ${{ inputs.mode == 'select' && 'Subtitle selection' || 'CLIXARENA subtitles' }} · ${{ inputs.request_id || 'manual' }}
+run-name: ${{ inputs.mode == 'upload' && 'Subtitle input upload' || inputs.mode == 'select' && 'Subtitle selection' || 'CLIXARENA subtitles' }} · ${{ inputs.request_id || 'manual' }}
 on:
   workflow_dispatch:
     inputs:
       mode:
         type: choice
-        options: [extract, transcribe, match, select]
+        options: [extract, transcribe, match, select, upload]
         default: extract
       subtitle_tracks:
         description: 'ask (website), all, or subtitle track numbers (0,1)'
@@ -34,6 +34,23 @@ permissions:
   contents: read
   actions: read
 jobs:
+  upload:
+    if: inputs.mode == 'upload'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Save subtitle input part
+        id: input
+        run: python3 scripts/subtitle_upload.py save
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subtitle-input-${{ inputs.request_id }}-${{ steps.input.outputs.index }}
+          path: subtitle-input.json
+          compression-level: 0
+          retention-days: 1
   selection:
     if: inputs.mode == 'select'
     runs-on: ubuntu-24.04
@@ -51,7 +68,7 @@ jobs:
           compression-level: 0
           retention-days: 1
   subtitles:
-    if: inputs.mode != 'select'
+    if: inputs.mode != 'select' && inputs.mode != 'upload'
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     env:
@@ -103,6 +120,7 @@ jobs:
         if: inputs.mode == 'transcribe' || inputs.mode == 'match'
         run: python scripts/subtitle_job.py
         env:
+          GH_TOKEN: ${{ github.token }}
           SUBTITLE_MEDIA_URL: ${{ secrets.SUBTITLE_MEDIA_URL }}
       - name: Download subtitles and extraction report
         if: success() || failure()

@@ -226,13 +226,17 @@ def recognize(audio,model,language,cache,allow_download=True):
 def subtitle_text(payload,work):
     try:options=json.loads(payload)
     except (ValueError,TypeError):raise SetupError('Invalid subtitle input.') from None
+    if 'subtitle_upload' in options:
+        if options.get('subtitle_data') or options.get('subtitle_url'):raise SetupError('Ambiguous subtitle input.')
+        from subtitle_upload import receive
+        options={'subtitle_data':receive(options['subtitle_upload']),'subtitle_url':''}
     data=str(options.get('subtitle_data',''));url=str(options.get('subtitle_url',''))
     mask(data);mask(url)
     if bool(data)==bool(url):raise SetupError('Choose one subtitle file or download URL.')
     if data:
         try:
             raw=base64.b64decode(data,validate=True)
-            if len(raw)>45000:raise ValueError()
+            if len(raw)>512*1024:raise ValueError()
             import io
             with gzip.GzipFile(fileobj=io.BytesIO(raw)) as f:plain=f.read(LIMIT+1)
         except Exception:raise SetupError('Invalid compressed subtitle file.') from None
