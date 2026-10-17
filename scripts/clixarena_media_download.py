@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from clixarena_parallel import parallel_download
 
 def mask(value):
     if not value:
@@ -125,11 +126,20 @@ def open_video_response(opener, request, drive_id):
     raise DownloadError('Google Drive download confirmation did not complete. Check sharing and download permissions.')
 
 
-def download(url, target, limit):
+def download(url, target, limit, connections=4):
     validate_url(url); mask(url)
     source, drive_id = resolve_video_source(url)
     if drive_id:
         print('Google Drive file link detected; resolving download', flush=True)
+    if type(connections) is not int or not 1<=connections<=16:
+        raise DownloadError('Choose 1 to 16 download connections.')
+    print('Subtitle downloader version: 2026.10.17-parallel-stepdown-v4',flush=True)
+    print('Download connections selected: '+str(connections),flush=True)
+    if not drive_id and parallel_download(source,target,limit,
+            lambda: urllib.request.build_opener(urllib.request.ProxyHandler({}),SafeRedirect()),
+            validate_url,connections=connections):
+        return
+    print('Using single-connection media download',flush=True)
     for attempt in range(3):
         cookies = http.cookiejar.CookieJar()
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), SafeRedirect(), urllib.request.HTTPCookieProcessor(cookies)) if drive_id else OPENER

@@ -49,10 +49,14 @@ def settings(inputs):
             raise ValueError()
     except (ValueError,TypeError):
         raise SetupError('Start time must be a finite number of seconds between 0 and 86400.') from None
+    raw_connections=inputs.get('download_connections','4')
+    if type(raw_connections) not in (int,str) or not re.fullmatch(r'[0-9]{1,2}',str(raw_connections)) or not 1<=int(raw_connections)<=16:
+        raise SetupError('Choose 1 to 16 download connections.')
+    connections=int(raw_connections)
     audio = str(inputs.get('audio_track','auto')).strip().lower()
     if not re.fullmatch(r'auto|[a-z]{2,20}|[0-9]{1,3}',audio):
         raise SetupError('Audio track must be auto, a language code/name, or a zero-based audio track number.')
-    return {'url':url,'name':name,'model':model,'language':language,'sample':sample in (True,'true'),'start':start,'audio':audio}
+    return {'url':url,'name':name,'model':model,'language':language,'sample':sample in (True,'true'),'start':start,'audio':audio,'download_connections':connections}
 
 def tool(args, timeout):
     try:
@@ -192,7 +196,7 @@ def main():
         if shutil.disk_usage(root).free<4*1024**3:raise SetupError('Runner disk space is below the 4 GB reserve.')
         source=work/'source.media';audio=work/'speech.wav'
         stage='media download';print('Downloading video/audio',flush=True)
-        download(options['url'],source,12*1024**3)
+        download(options['url'],source,12*1024**3,connections=options['download_connections'])
         stage='audio selection';streams=audio_streams(source)
         index,selected=select_audio(streams,options['audio'])
         print(f'Selected audio track {index}',flush=True)

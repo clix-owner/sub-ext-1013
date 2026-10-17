@@ -242,7 +242,7 @@ def subtitle_text(payload,work):
             with gzip.GzipFile(fileobj=io.BytesIO(raw)) as f:plain=f.read(LIMIT+1)
         except Exception:raise SetupError('Invalid compressed subtitle file.') from None
     else:
-        target=work/'uploaded-subtitle.srt';download(url,target,LIMIT);plain=target.read_bytes()
+        target=work/'uploaded-subtitle.srt';download(url,target,LIMIT,connections=1);plain=target.read_bytes()
     if not plain or len(plain)>LIMIT:raise SetupError('Subtitle must be under 2 MB.')
     try:return plain.decode('utf-8-sig')
     except UnicodeError:raise SetupError('Subtitle must be UTF-8.') from None
@@ -252,7 +252,7 @@ def main(inputs):
     work=Path('.subtitle-work');work.mkdir(exist_ok=True)
     try:
         cues=parse_subtitles(subtitle_text(inputs.get('subtitle_tracks',''),work))
-        source=work/'source.media';download(cfg['url'],source,12*1024**3)
+        source=work/'source.media';download(cfg['url'],source,12*1024**3,connections=cfg['download_connections'])
         index,_=select_audio(audio_streams(source),cfg['audio'])
         audio=work/'speech.wav';duration=extract_audio(source,audio,index,cfg['start'],cfg['sample']);source.unlink()
         offset=cfg['start'];chosen=cues if not cfg['sample'] and offset==0 else [c for c in cues if c['start']>=offset and c['end']<=offset+duration]

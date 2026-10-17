@@ -76,6 +76,6 @@ def main(inputs):
     work=Path('.subtitle-work'); work.mkdir(exist_ok=True)
     try:
         source=work/'source.media'
-        download(cfg['url'],source,12*1024**3)
+        download(cfg['url'],source,12*1024**3,connections=cfg['download_connections'])
         extract_tracks(source,Path('generated-subtitles'),cfg['name'],inputs.get('subtitle_tracks','all'))
     finally: shutil.rmtree(work,ignore_errors=True)

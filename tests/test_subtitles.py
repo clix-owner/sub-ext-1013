@@ -118,8 +118,10 @@ class SubtitleTests(unittest.TestCase):
     def test_manual_job_writes_artifacts_and_cleans_source_without_url_logs(self):
         with tempfile.TemporaryDirectory(dir='.') as folder:
             root=Path(folder).resolve();event=root/'event.json';summary=root/'summary.md'
-            event.write_text(json.dumps({'inputs':{'media_url':'https://example.com/file?token=private-canary','output_name':'My Movie','audio_track':'tam'}}))
-            def fetch(url,target,limit):target.write_bytes(b'fake-media')
+            event.write_text(json.dumps({'inputs':{'media_url':'https://example.com/file?token=private-canary','output_name':'My Movie','audio_track':'tam','download_connections':'6'}}))
+            def fetch(url,target,limit,**kwargs):
+                self.assertEqual(kwargs['connections'],6)
+                target.write_bytes(b'fake-media')
             def audio(source,target,index,start,sample):target.write_bytes(b'fake-audio');return 5
             info=NS(language='ta',language_probability=.99)
             def speech(*args):return iter([NS(start=0,end=2,text='தமிழ் உரையாடல்',words=None)]),info

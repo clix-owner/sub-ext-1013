@@ -20,7 +20,7 @@ def prepare(inputs):
     cfg=settings({**inputs,'model':'medium','language':'auto','sample_only':False,'start_seconds':0,'audio_track':'auto'})
     work=Path('.subtitle-work');work.mkdir(exist_ok=True)
     source=work/'source.media'
-    download(cfg['url'],source,12*1024**3)
+    download(cfg['url'],source,12*1024**3,connections=cfg['download_connections'])
     tracks=track_list(source)
     if not tracks:raise SetupError('This source contains no embedded subtitle tracks. Burned-in text cannot be extracted.')
     requested=inputs.get('subtitle_tracks','ask')

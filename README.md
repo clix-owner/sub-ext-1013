@@ -32,3 +32,21 @@ Three separately seeked local clips with longer dialogue context were recognized
 
 ## Method numbering and model order update
 The UI dropdown is ordered Method 1 (embedded extraction), Method 2 (new subtitles), Method 3 (existing-dialogue word matching). Method 3 initially selects Base, using Base.en for English as in the Merlin test. The model list runs Base → Small → Medium → Large-v3 Turbo → Large-v3. English Method 3 uses the .en versions of Base, Small and Medium. Model choices are remembered separately for Methods 2 and 3 while the page remains open. Large-v3 is the largest model supported by this package; a larger model is not a guarantee of perfect timing. Other sizes were not downloaded or tested on the supplied video during this update.
+
+
+## Selectable parallel downloads — 2026-10-17
+
+Choose Download connections (1–16, default 4) below the source URL. 1 keeps single-stream downloads. This is per job and applies to embedded extraction, original-language speech transcription and timestamp/word matching. The workflow also exposes this as download_connections for manual runs. Deploy the GitHub workflow/scripts before the updated UI so dispatch recognizes the input. No new secrets or services are required.
+
+Each range is at most 8 MiB, with up to the selected number of concurrent requests. If a proxy returns a full HTTP 200 response instead of a range, the response is closed without consuming the whole file and only that range is retried (up to three requests). Later attempts omit If-Range but still require the same strong ETag, exact Content-Range and received byte count. Files below 16 MiB, unsupported ranges or inconsistent responses use the existing single-stream downloader. Failed parallel data is discarded before single-stream fallback. Google Drive confirmation and small external subtitle downloads remain single-stream.
+
+The exact trendimovies.com hostname retains the preceding compatibility method: exact range/length checks and source samples before/after the download. Samples do not prove full-file identity. Other hosts require strong ETag identity. URL/public-address/redirect checks, normal TLS verification, disk reserve, 12 GiB media limit and existing FFprobe validation remain enabled. Neither tokens nor source URLs are printed by the new downloader. More connections do not guarantee more speed.
+
+Download selection does not change transcription accuracy, models, subtitle text/timings or upload/track-selection job behavior. Actions logs show the selected count and whether parallel or single-stream download is used. PARALLEL_DOWNLOAD=off remains an optional backend escape hatch if supplied in the environment.
+
+
+## Parallel probe v3
+
+The downloader now logs version 2026.10.17-parallel-probe-v3 and the actual selected connections before probing. Initial full HTTP 200 probe responses are closed and retried up to three times, rather than immediately falling back. Explicit credential-free fallback reasons show why parallel mode could not proceed (missing validator, invalid range, size threshold, disk reserve or transfer verification). Persistent failures still use the single-stream downloader. The existing 8 MiB chunks, per-range retries, ETag/byte-count checks, Trendimovies compatibility and 1–16 per-job choice remain. No URL, token or raw response is exposed by the new diagnostics.
+
+If the previous connection-selection update is already installed, replace scripts/clixarena_parallel.py and scripts/clixarena_media_download.py in GitHub. No Cloudflare redeployment is needed for this v3-only update. This complete bundle also contains the UI and workflow connection selector for installations that have not yet applied it.

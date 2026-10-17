@@ -46,7 +46,7 @@ class SelectionTests(unittest.TestCase):
   first.write_text('1\n00:00:01,000 --> 00:00:02,000\nFirst track\n\n',encoding='utf-8')
   second.write_text('1\n00:00:03,000 --> 00:00:04,000\nSecond track\n\n',encoding='utf-8')
   tool(['ffmpeg','-v','error','-y','-f','lavfi','-i','sine=duration=5','-i',str(first),'-i',str(second),'-map','0:a','-map','1:s','-map','2:s','-c:a','pcm_s16le','-c:s','copy','-metadata:s:s:0','language=eng','-metadata:s:s:1','language=sin','multi.mkv'],30)
-  with patch.object(selection,'download',side_effect=lambda url,dest,limit:shutil.copyfile('multi.mkv',dest)):
+  with patch.object(selection,'download',side_effect=lambda url,dest,limit,**kwargs:shutil.copyfile('multi.mkv',dest)):
    self.assertTrue(selection.prepare(self.inputs))
   self.assertFalse(Path('generated-subtitles').exists())
   listing=json.loads(Path('subtitle-tracks.json').read_text());self.assertEqual([t['language'] for t in listing['tracks']],['eng','sin'])
@@ -57,7 +57,7 @@ class SelectionTests(unittest.TestCase):
   self.assertIn('Second track',outputs[0].read_text());self.assertNotIn('First track',outputs[0].read_text())
   shutil.rmtree('generated-subtitles');Path('subtitle-tracks.json').unlink()
   tool(['ffmpeg','-v','error','-y','-i','multi.mkv','-map','0:a','-map','0:s:0','-c','copy','single.mkv'],30)
-  with patch.object(selection,'download',side_effect=lambda url,dest,limit:shutil.copyfile('single.mkv',dest)):
+  with patch.object(selection,'download',side_effect=lambda url,dest,limit,**kwargs:shutil.copyfile('single.mkv',dest)):
    self.assertFalse(selection.prepare(self.inputs))
   self.assertFalse(Path('subtitle-tracks.json').exists())
   self.assertEqual(len(list(Path('generated-subtitles').glob('*.srt'))),1)
