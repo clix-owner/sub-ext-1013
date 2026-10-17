@@ -126,7 +126,10 @@ def open_video_response(opener, request, drive_id):
     raise DownloadError('Google Drive download confirmation did not complete. Check sharing and download permissions.')
 
 
-def download(url, target, limit, connections=4):
+def download(url, target, limit, connections=4, source=None):
+    if isinstance(source,dict) and source.get('source_kind','https')!='https':
+        from subtitle_source import use_prepared
+        return use_prepared(source,target,limit)
     validate_url(url); mask(url)
     source, drive_id = resolve_video_source(url)
     if drive_id:

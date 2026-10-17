@@ -20,7 +20,7 @@ def prepare(inputs):
     cfg=settings({**inputs,'model':'medium','language':'auto','sample_only':False,'start_seconds':0,'audio_track':'auto'})
     work=Path('.subtitle-work');work.mkdir(exist_ok=True)
     source=work/'source.media'
-    download(cfg['url'],source,12*1024**3,connections=cfg['download_connections'])
+    download(cfg['url'],source,12*1024**3,connections=cfg['download_connections'],source=inputs)
     tracks=track_list(source)
     if not tracks:raise SetupError('This source contains no embedded subtitle tracks. Burned-in text cannot be extracted.')
     requested=inputs.get('subtitle_tracks','ask')
@@ -44,7 +44,7 @@ def github(path):
     request=urllib.request.Request('https://api.github.com/repos/'+repo+path,headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','User-Agent':'clixarena-subtitle-selection'})
     return urllib.request.build_opener(NoRedirect).open(request,timeout=30)
 
-def selection_file(artifact_id):
+def selection_file(artifact_id,filename='selection.json'):
     from urllib.error import HTTPError
     from urllib.parse import urlsplit
     try:github('/actions/artifacts/'+str(int(artifact_id))+'/zip')
@@ -60,7 +60,7 @@ def selection_file(artifact_id):
         raw=response.read(100001)
     if len(raw)>100000:raise SetupError('Selection artifact is too large.')
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-        info=archive.getinfo('selection.json')
+        info=archive.getinfo(filename)
         if info.file_size>4096:raise SetupError('Selection file is too large.')
         return json.loads(archive.read(info))
 

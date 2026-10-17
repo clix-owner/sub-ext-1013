@@ -252,7 +252,7 @@ def main(inputs):
     work=Path('.subtitle-work');work.mkdir(exist_ok=True)
     try:
         cues=parse_subtitles(subtitle_text(inputs.get('subtitle_tracks',''),work))
-        source=work/'source.media';download(cfg['url'],source,12*1024**3,connections=cfg['download_connections'])
+        source=work/'source.media';download(cfg['url'],source,12*1024**3,connections=cfg['download_connections'],source=inputs)
         index,_=select_audio(audio_streams(source),cfg['audio'])
         audio=work/'speech.wav';duration=extract_audio(source,audio,index,cfg['start'],cfg['sample']);source.unlink()
         offset=cfg['start'];chosen=cues if not cfg['sample'] and offset==0 else [c for c in cues if c['start']>=offset and c['end']<=offset+duration]

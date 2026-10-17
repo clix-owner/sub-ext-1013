@@ -1,15 +1,22 @@
 name: CLIXARENA subtitles
-run-name: ${{ inputs.mode == 'upload' && 'Subtitle input upload' || inputs.mode == 'select' && 'Subtitle selection' || 'CLIXARENA subtitles' }} · ${{ inputs.request_id || 'manual' }}
+run-name: ${{ inputs.mode == 'torrent-upload' && 'Torrent input upload' || inputs.mode == 'torrent-select' && 'Torrent video selection' || (inputs.mode == 'upload' || inputs.mode == 'torrent-upload') && 'Subtitle input upload' || (inputs.mode == 'select' || inputs.mode == 'torrent-select') && 'Subtitle selection' || 'CLIXARENA subtitles' }} · ${{ inputs.request_id || 'manual' }}
 on:
   workflow_dispatch:
     inputs:
       mode:
         type: choice
-        options: [extract, transcribe, match, select, upload]
+        options: [extract, transcribe, match, select, upload, torrent-select, torrent-upload]
         default: extract
       subtitle_tracks:
         description: 'ask (website), all, or subtitle track numbers (0,1)'
         default: ask
+      source_kind:
+        type: choice
+        options: [https, torrent, magnet]
+        default: https
+      torrent_source:
+        description: 'Website-managed torrent/magnet descriptor; use website for file upload and selection'
+        required: false
       media_url:
         description: HTTPS source URL (blank uses secret)
         required: false
@@ -40,7 +47,7 @@ permissions:
   actions: read
 jobs:
   upload:
-    if: inputs.mode == 'upload'
+    if: inputs.mode == 'upload' || inputs.mode == 'torrent-upload'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -52,8 +59,8 @@ jobs:
         run: python3 scripts/subtitle_upload.py save
       - uses: actions/upload-artifact@v4
         with:
-          name: subtitle-input-${{ inputs.request_id }}-${{ steps.input.outputs.index }}
-          path: subtitle-input.json
+          name: ${{ inputs.mode == 'torrent-upload' && 'torrent-input' || 'subtitle-input' }}-${{ inputs.request_id }}-${{ steps.input.outputs.index }}
+          path: ${{ inputs.mode == 'torrent-upload' && 'torrent-input.json' || 'subtitle-input.json' }}
           compression-level: 0
           retention-days: 1
   selection:
@@ -72,8 +79,24 @@ jobs:
           path: selection.json
           compression-level: 0
           retention-days: 1
+  torrent_selection:
+    if: inputs.mode == 'torrent-select'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Save selected torrent video
+        run: python3 scripts/subtitle_source.py select
+      - uses: actions/upload-artifact@v4
+        with:
+          name: torrent-selection-${{ inputs.request_id }}
+          path: torrent-selection.json
+          compression-level: 0
+          retention-days: 1
   subtitles:
-    if: inputs.mode != 'select' && inputs.mode != 'upload'
+    if: inputs.mode != 'select' && inputs.mode != 'upload' && inputs.mode != 'torrent-select' && inputs.mode != 'torrent-upload'
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     env:
@@ -101,6 +124,30 @@ jobs:
         with:
           path: /home/runner/.cache/clixarena-whisper
           key: clixarena-whisper-${{ runner.os }}-1.2.1-${{ inputs.model }}
+      - name: Install torrent runtime
+        if: inputs.source_kind == 'torrent' || inputs.source_kind == 'magnet'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-libtorrent
+      - name: Prepare media source and discover torrent videos
+        id: source
+        run: /usr/bin/python3 scripts/subtitle_source.py prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Publish torrent video choices
+        if: steps.source.outputs.waiting == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: torrent-files-${{ github.run_id }}
+          overwrite: true
+          path: torrent-files.json
+          compression-level: 0
+          retention-days: 1
+      - name: Waiting for you to choose torrent video in the website
+        if: steps.source.outputs.waiting == 'true'
+        run: /usr/bin/python3 scripts/subtitle_source.py wait
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Read embedded subtitle tracks (one track extracts automatically)
         id: tracks
         if: inputs.mode == 'extract'

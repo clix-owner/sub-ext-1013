@@ -25,7 +25,9 @@ class SetupError(Exception):
     """Fixed messages only: do not include remote URLs/responses/tool stderr."""
 
 def settings(inputs):
-    url = str(inputs.get('media_url','')).strip() or os.getenv('SUBTITLE_MEDIA_URL','').strip()
+    kind=inputs.get('source_kind','https')
+    if kind not in ('https','torrent','magnet'):raise SetupError('Choose a supported source type.')
+    url = ('https://torrent.invalid/source' if kind!='https' else str(inputs.get('media_url','')).strip() or os.getenv('SUBTITLE_MEDIA_URL','').strip())
     mask(url)
     if not url:
         raise SetupError('Enter a video/audio download URL.')
@@ -196,7 +198,7 @@ def main():
         if shutil.disk_usage(root).free<4*1024**3:raise SetupError('Runner disk space is below the 4 GB reserve.')
         source=work/'source.media';audio=work/'speech.wav'
         stage='media download';print('Downloading video/audio',flush=True)
-        download(options['url'],source,12*1024**3,connections=options['download_connections'])
+        download(options['url'],source,12*1024**3,connections=options['download_connections'],source=event.get('inputs',{}))
         stage='audio selection';streams=audio_streams(source)
         index,selected=select_audio(streams,options['audio'])
         print(f'Selected audio track {index}',flush=True)
